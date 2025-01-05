@@ -6,3 +6,6 @@ build*/
 !/subprojects/csri
 !/subprojects/iconv
 !/subprojects/luabins
+
+# VS Code
+.vscode/
