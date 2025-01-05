@@ -28,3 +28,6 @@ subprojects/zlib-*
 subprojects/dirent-*
 subprojects/hunspell-*
 subprojects/uchardet-*
+
+# VS Code
+.vscode/
