@@ -77,12 +77,12 @@ struct help_contents final : public Command {
 struct help_irc final : public Command {
 	CMD_NAME("help/irc")
 	CMD_ICON(irc_button)
-	STR_MENU("&IRC Channel")
-	STR_DISP("IRC Channel")
-	STR_HELP("Visit Aegisub's official IRC channel")
+	STR_MENU("&Discord Channel")
+	STR_DISP("Discord Channel")
+	STR_HELP("Visit Aegisub's official Discord channel")
 
 	void operator()(agi::Context *) override {
-		wxLaunchDefaultBrowser("irc://irc.rizon.net/aegisub", wxBROWSER_NEW_WINDOW);
+		wxLaunchDefaultBrowser("https://discord.com/invite/AZaVyPr", wxBROWSER_NEW_WINDOW);
 	}
 };
 
