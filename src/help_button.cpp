@@ -80,11 +80,11 @@ HelpButton::HelpButton(wxWindow *parent, const char *page, wxPoint position, wxS
 }
 
 void HelpButton::OpenPage(const char *pageID) {
-	std::string version = BUILD_GIT_VERSION_STRING.substr(0, 3);
+	std::string version = strlen(BUILD_GIT_VERSION_STRING) == 5 ? std::string(BUILD_GIT_VERSION_STRING).substr(0, 3) : "latest";
 	auto page = url(pageID);
 	auto sep = strchr(page, '#');
 	if (sep)
-		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%.*s/%s", version, sep - page, page, sep));
+		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%.*s/%s", version.c_str(), sep - page, page, sep));
 	else
-		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%s/", version, page));
+		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%s/", version.c_str(), page));
 }
