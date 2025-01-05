@@ -29,6 +29,8 @@
 
 #include "help_button.h"
 
+#include "git_version.h"
+
 #include "format.h"
 
 #include <libaegisub/exception.h>
@@ -78,10 +80,11 @@ HelpButton::HelpButton(wxWindow *parent, const char *page, wxPoint position, wxS
 }
 
 void HelpButton::OpenPage(const char *pageID) {
+	std::string version = strlen(BUILD_GIT_VERSION_STRING) == 5 ? std::string(BUILD_GIT_VERSION_STRING).substr(0, 3) : "latest";
 	auto page = url(pageID);
 	auto sep = strchr(page, '#');
 	if (sep)
-		wxLaunchDefaultBrowser(fmt_wx("http://docs.aegisub.org/3.2/%.*s/%s", sep - page, page, sep));
+		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%.*s/%s", version.c_str(), sep - page, page, sep));
 	else
-		wxLaunchDefaultBrowser(fmt_wx("http://docs.aegisub.org/3.2/%s/", page));
+		wxLaunchDefaultBrowser(fmt_wx("https://docs.aegisub.org/%s/%s/", version.c_str(), page));
 }
