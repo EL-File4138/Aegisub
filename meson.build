@@ -1,12 +1,13 @@
 project('Aegisub', ['c', 'cpp'],
         license: 'BSD-3-Clause',
-        meson_version: '>=0.57.0',
+        meson_version: '>=0.60.0',
         default_options: [
             'b_ndebug=if-release',
             'cpp_std=c++20',
             'buildtype=debugoptimized',
             'harfbuzz:icu=disabled',
             'ffmpeg:libdav1d=enabled',
+            'luajit:default_library=static',
             'luajit:amalgam=true',
             'luajit:lua52compat=true',
             'luajit:luajit=false',
@@ -82,7 +83,6 @@ if get_option('enable_update_checker')
 endif
 
 deps = []
-deps_inc = []
 
 if host_machine.system() == 'darwin'
     add_languages('objc', 'objcpp')
@@ -99,24 +99,15 @@ cc = meson.get_compiler('c')
 deps += cc.find_library('m', required: false)
 deps += cc.find_library('dl', required: false)
 
-if meson.version().version_compare('>=0.60.0')
-  iconv_dep = dependency('iconv', fallback: ['iconv', 'libiconv_dep'])
-else
-  iconv_dep = cc.find_library('iconv', required: false)
-  if not (iconv_dep.found() or cc.has_function('iconv_open'))
-      iconv_sp = subproject('iconv') # this really needs to be replaced with a proper port
-      iconv_dep = iconv_sp.get_variable('libiconv_dep')
-  endif
-endif
-deps += iconv_dep
+deps += dependency('iconv', fallback: ['iconv', 'libiconv_dep'])
 
 deps += dependency('libass', version: '>=0.9.7',
                    fallback: ['libass', 'libass_dep'])
 
-boost_modules = ['chrono', 'thread', 'locale', 'regex']
+boost_modules = ['chrono', 'thread', 'locale']
 if not get_option('local_boost')
     boost_dep = dependency('boost', version: '>=1.70.0',
-                            modules: boost_modules + ['system'],
+                            modules: boost_modules,
                             required: false,
                             static: get_option('default_library') == 'static')
 endif
@@ -124,7 +115,7 @@ endif
 if get_option('local_boost') or not boost_dep.found()
     boost_dep = []
     boost = subproject('boost')
-    foreach module: boost_modules
+    foreach module: (boost_modules + ['regex'])
         boost_dep += boost.get_variable('boost_' + module + '_dep')
     endforeach
 endif
@@ -136,11 +127,7 @@ endif
 
 deps += dependency('zlib')
 
-wx_minver = '>=' + get_option('wx_version')
-if host_machine.system() == 'darwin'
-    wx_minver = '>=3.1.0'
-endif
-wx_dep = dependency('wxWidgets', version: wx_minver,
+wx_dep = dependency('wxWidgets', version: '>=' + get_option('wx_version'),
                     required: false,
                     modules: ['std', 'stc', 'gl'])
 
@@ -157,10 +144,10 @@ else
     endif
 
     opt_var = cmake.subproject_options()
-    opt_var.set_override_option('cpp_std', 'c++14')
+    opt_var.set_override_option('cpp_std', 'c++20')
     opt_var.add_cmake_defines({
         'wxBUILD_INSTALL': false,
-        'wxBUILD_PRECOMP': false,       # otherwise breaks project generation w/ meson
+        'wxBUILD_PRECOMP': 'OFF',       # otherwise breaks project generation w/ meson
         'wxBUILD_SHARED': build_shared,
 
         'wxUSE_WEBVIEW': false,         # breaks build on linux
@@ -267,8 +254,12 @@ if host_machine.system() == 'windows' and not get_option('directsound').disabled
     endif
 endif
 
+if host_machine.system() == 'windows' and cc.has_header('dwrite_3.h')
+    conf.set('HAVE_DWRITE_3', 1)
+endif
+
 if host_machine.system() == 'darwin'
-    frameworks_dep = dependency('appleframeworks', modules : ['CoreText', 'CoreFoundation', 'AppKit', 'Carbon', 'IOKit'])
+    frameworks_dep = dependency('appleframeworks', modules : ['CoreText', 'CoreFoundation', 'AppKit', 'Carbon', 'IOKit', 'QuartzCore'])
     deps += frameworks_dep
 endif
 
@@ -285,42 +276,25 @@ else
     def_audio = ''
 endif
 
-conf_platform = configuration_data()
-conf_platform.set('DEFAULT_PLAYER_AUDIO', def_audio)
+conf_meson = configuration_data()
+conf_meson.set('DEFAULT_PLAYER_AUDIO', def_audio)
 
 if get_option('enable_update_checker')
-    libcurl_dep = dependency('libcurl', required: false)
+    curl_disable = ['tool', 'dict', 'file', 'ftp', 'gopher', 'imap', 'ldap', 'ldaps', 'mqtt', 'pop3', 'rtmp', 'rtsp', 'smb', 'smtp', 'telnet', 'tftp']
+    curl_options = []
+    foreach opt : curl_disable
+        curl_options += opt + '=disabled'
+    endforeach
 
-    if (not libcurl_dep.found())
-        libcurl_opt = cmake.subproject_options()
-        options_dict = {
-            'HTTP_ONLY': true,
-            'BUILD_CURL_EXE': false,
-            'CMAKE_BUILD_TYPE': get_option('buildtype') == 'release' ? 'Release' : 'Debug',
-        }
-        if host_machine.system() == 'windows'
-            options_dict += {'CURL_USE_SCHANNEL': true}
-            deps += cc.find_library('crypt32')
-        elif host_machine.system() == 'darwin'
-            options_dict += {'CURL_USE_SECTRANSP': true}
-        else
-            options_dict += {'CURL_USE_OPENSSL': true}
-        endif
-        if get_option('default_library') == 'static' and (host_machine.system() == 'windows' or host_machine.system() == 'darwin')
-            options_dict += {'BUILD_SHARED_LIBS': false}
-            add_project_arguments('-DCURL_STATICLIB', language: ['cpp'])
-        endif
-        libcurl_opt.add_cmake_defines(options_dict)
-        libcurl = cmake.subproject('curl', options: libcurl_opt)
-
-        libcurl_dep = libcurl.dependency('libcurl')
-
-        # Horrible meson hack to work around the cmake subproject creating broken include directories
-        libcurl_dep = libcurl_dep.partial_dependency(compile_args: true, link_args: true, links: true, sources: true)
-        libcurl_fixed_inc = declare_dependency(include_directories: subproject('curl_meson').get_variable('libcurl_fixed_inc'))
-        deps += [libcurl_fixed_inc]
+    if host_machine.system() == 'windows'
+        curl_options += 'schannel=enabled'
+    elif host_machine.system() == 'darwin'
+        curl_options += 'secure-transport=enabled'
+    else
+        curl_options += 'openssl=enabled'
     endif
-    deps += [libcurl_dep]
+
+    deps += dependency('libcurl', allow_fallback: true, default_options: curl_options)
 endif
 
 luajit = dependency('luajit', version: '>=2.0.0', required: get_option('system_luajit'),
@@ -396,34 +370,61 @@ elif cc.has_header_symbol('malloc.h', 'alloca', prefix: '#include <stdlib.h>')
     conf.set('HAVE_MALLOC_H', true)
 endif
 
-acconf = configure_file(output: 'acconf.h', configuration: conf)
+aegisub_order_dep = []
+aegisub_defines = []
+
+if get_option('b_pch')
+    # Write the feature flags into a configure_file to not bloat the compiler args too much
+    aegisub_order_dep += configure_file(output: 'acconf.h', configuration: conf)
+else
+    # Manually pass the feature flags as compiler args
+    foreach key : conf.keys()
+        # Some hacks since meson apparently can't give you the type of a variable
+        if '@0@'.format(conf.get(key)) == 'true'
+            assert(conf.get(key) == true)
+            aegisub_defines += '-D@0@'.format(key)
+        elif '@0@'.format(conf.get(key)) != 'false'
+            # conf.set() with a string quotes the string so conf.get(key) can't be the actual string 'false'
+            aegisub_defines += '-D@0@=@1@'.format(key, conf.get(key))
+        endif
+    endforeach
+
+    if host_machine.system() == 'windows'
+        # This is also part of all the PCHs
+        aegisub_defines += '-DWIN32_LEAN_AND_MEAN'
+    endif
+endif
 
 subdir('automation')
 subdir('libaegisub')
 subdir('packages')
 subdir('po')
 subdir('src')
-subdir('tests')
+if get_option('tests')
+    subdir('tests')
+endif
 
 aegisub_cpp_pch = ['src/include/agi_pre.h']
 aegisub_c_pch = ['src/include/agi_pre_c.h']
 
-aegisub = executable('aegisub', aegisub_src, version_h, acconf, resrc,
+link_args = []
+link_depends = []
+if host_machine.system() == 'windows'
+    manifest_file = configure_file(copy: true, input: 'src/res/aegisub.exe.manifest', output: 'aegisub.exe.manifest')
+    link_args += ['/MANIFEST:EMBED', '/MANIFESTINPUT:@0@'.format(manifest_file)]
+    link_depends += manifest_file
+endif
+
+aegisub = executable('aegisub', aegisub_src, version_h, resrc, aegisub_order_dep,
+                     c_args: aegisub_defines,
+                     cpp_args: aegisub_defines,
                      link_with: [libresrc, libaegisub],
-                     include_directories: [libaegisub_inc, libresrc_inc, version_inc, deps_inc, include_directories('src')],
+                     link_args: link_args,
+                     link_depends: link_depends,
+                     include_directories: [libaegisub_inc, libresrc_inc, version_inc, include_directories('src')],
                      cpp_pch: aegisub_cpp_pch,
                      c_pch: aegisub_c_pch,
                      install: true,
                      install_dir: bindir,
                      dependencies: deps,
                      win_subsystem: 'windows')
-
-if host_machine.system() == 'windows'
-    mt_exe = find_program('mt.exe')
-    apply_manifest = find_program(meson.project_source_root() / 'tools/apply-manifest.py')
-    custom_target('apply-manifest',
-                  input: aegisub,
-                  output: 'applied_manifest',
-                  command: [apply_manifest, mt_exe, '@INPUT@'],
-                  build_by_default: true)
-endif

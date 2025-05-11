@@ -16,7 +16,8 @@ maybe_append() {
 
 find ../src ../src/command -name '*.cpp' -o -name '*.h' \
   | xgettext --files-from=- -o - --c++ --sort-by-file \
-             -k_ -kSTR_MENU -kSTR_DISP -kSTR_HELP -kfmt_tl -kfmt_plural:2,3 \
+             -k_ -kSTR_MENU -kSTR_DISP -kSTR_HELP -kCOMMAND_GROUP:5 \
+             -kfmt_tl -kfmt_plural:2,3 \
   | sed 's/SOME DESCRIPTIVE TITLE./Aegisub 3.2/' \
   | sed 's/YEAR/2005-2014/' \
   | sed "s/THE PACKAGE'S COPYRIGHT HOLDER/Rodrigo Braz Monteiro, Niels Martin Hansen, Thomas Goyne et. al./" \
@@ -26,8 +27,10 @@ find ../src ../src/command -name '*.cpp' -o -name '*.h' \
   | sed 's/CHARSET/UTF-8/' \
   > aegisub.pot
 
-sed '/"text"/!d;s/^.*"text" : \("[^"]\+"\).*$/default_menu.json|0|\1/' ../src/libresrc/default_menu.json \
-  | maybe_append
+for f in default_menu.json default_menu_platform.json osx/default_menu.json; do
+    sed '/"text"/!d;s/^.*"text" : \("[^"]\+"\).*$/default_menu.json|0|\1/' ../src/libresrc/"$f" \
+      | maybe_append
+done
 
 sed '/"text"/!d;s/^.*"text" : \("[^"]\+"\).*$/default_menu.json|0|\1/' ../src/libresrc/osx/default_menu.json \
   | maybe_append
