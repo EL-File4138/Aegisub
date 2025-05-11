@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if test -d data; then
 	chmod 777 data/*
 	chmod -R 777 data/
